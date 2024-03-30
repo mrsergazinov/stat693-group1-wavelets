@@ -120,6 +120,17 @@ Wavmat <- function(h,N,k0=log(N,2),shift=2){
   }
   
   return(W)
+  
+  
+  #
+  # 
+  # Copyright (c) 2004. Brani Vidakovic
+  #        
+  # ver 1.0 Built 8/24/04; ver 1.2 Built 12/1/2004
+  # This is Copyrighted Material
+  # Comments? e-mail brani@isye.gatech.edu
+  #   
+  # updated: R code translation (Seong-joon Kim, 2015)
 }  
 
 W = Wavmat(filtercoe,2^8,7)
