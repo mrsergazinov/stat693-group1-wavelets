@@ -125,3 +125,18 @@ correlation_analysis_results <- list(
   "max_corr"=largest_correlation,
   "max_corr_where"=largest_idx
 )
+
+# Step 8: Fit the regression between Y1 and the "best" wavelet coefficient from the calibration set
+# Choose the "best" wavelet coefficient
+best_coef = D1[, correlation_analysis_results$max_corr_where]
+
+# Run linear regression 
+model_cal = lm(Y1 ~ best_coef)
+
+# Estimated regression coefficients for the calibration set
+coeff_cal = model_cal$coefficients
+
+# Step 9: Using the regression equation from calibration set we plug the "best" wavelet coefficient 
+# but from the prediction set and predict Y2.
+Y2_est = coeff_cal[1] + coeff_cal[2]*D2[, correlation_analysis_results$max_corr_where]
+
