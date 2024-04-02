@@ -138,5 +138,60 @@ coeff_cal = model_cal$coefficients
 
 # Step 9: Using the regression equation from calibration set we plug the "best" wavelet coefficient 
 # but from the prediction set and predict Y2.
-Y2_est = coeff_cal[1] + coeff_cal[2]*D2[, correlation_analysis_results$max_corr_where]
+Y2_est.wave = coeff_cal[1] + coeff_cal[2]*D2[, correlation_analysis_results$max_corr_where]
 
+# Step 10: We know the truth Y2 and have the prediction Y2hat. Plot them to see how close
+# they are. Use ggplot2 to plot the results
+library(ggplot2)
+plt1 <- ggplot(data.frame(Y2, Y2_est.wave), aes(x=Y2, y=Y2_est.wave)) + geom_point() + geom_abline()  + ylim(10, 25) + xlim(10, 25) + ggtitle("Wavelet Regression")
+
+# Step 11: Check the closeness via the ratio of “energy” of the difference Y2 - Y2hat, compared to the “energy” of the prediction Y2hat.
+print(paste(c("Transformed:", sum((Y2 - Y2_est.wave)^2) / sum(Y2_est.wave^2))))
+
+# Optional: Find energies of all wavelet coefficients
+energies <- apply(D2, 2, function(x) var(x), simplify=TRUE)
+# plot energies of all coefficients, highlight the best in red
+plt.energ <- ggplot(data.frame(energies), aes(x=1:length(energies), y=energies)) + 
+  geom_point() + 
+  geom_point(aes(x=correlation_analysis_results$max_corr_where, 
+                 y=energies[correlation_analysis_results$max_corr_where]), color="red", size=5)
+# plot correlations
+plt.corr <- ggplot(data.frame(corrs), aes(x=1:length(corrs), y=corrs)) + 
+  geom_point() + 
+  geom_point(aes(x=correlation_analysis_results$max_corr_where, 
+                 y=corrs[correlation_analysis_results$max_corr_where]), color="red", size=5)
+
+
+# Optional: Do the same on the untransformed data. What's the best we can do?
+find_best <- function(Xcal, Y1) {
+  corrs <- apply(t(Xcal), 2, function(x) cor(Y1, x), simplify=TRUE)
+  largest_correlation <- max(abs(corrs))
+  largest_idx <- which(abs(corrs) == largest_correlation)
+  return(largest_idx)
+}
+best_idx.simple <- find_best(Xcal, Y1)
+model_cal.simple = lm(Y1 ~ t(Xcal)[, best_idx.simple])
+coeff_cal.simple = model_cal.simple$coefficients
+Y2_est.simple = coeff_cal.simple[1] + coeff_cal.simple[2]*t(Xpre)[, best_idx.simple]
+print(paste(c("Untransformed:", sum((Y2 - Y2_est.simple)^2) / sum(Y2_est.simple^2))))
+plt2 <- ggplot(data.frame(Y2, Y2_est.simple), aes(x=Y2, y=Y2_est.simple)) + geom_point() + geom_abline()  + ylim(10, 25) + xlim(10, 25) + ggtitle("Untransformed Regression")
+
+# Optional: Involve more than 1 coefficient. Do a LASSO regression on the wavelet coefficients.
+library(glmnet)
+model_cal.lasso = cv.glmnet(D1, Y1)
+Y2_est.waveL = predict(model_cal.lasso, newx=D2, s="lambda.min")
+print(paste(c("LASSO:", sum((Y2 - Y2_est.waveL)^2) / sum(Y2_est.waveL^2))))
+plt3 <- ggplot(data.frame(Y2, Y2_est.waveL), aes(x=Y2, y=Y2_est.waveL)) + geom_point() + geom_abline() + ylim(10, 25) + xlim(10, 25) + ggtitle("Wavelet+LASSO Regression")
+
+# Optional: Compare wavelets with PCA. 
+pca_cal = prcomp(t(Xcal))
+pca_pre = prcomp(t(Xpre))
+model_cal.pca = lm(Y1 ~ pca_cal$x[, 1:10])
+coef_cal.pca <- model_cal.pca$coefficients
+Y2_est.pca = coef_cal.pca[1] + pca_pre$x[, 1:10] %*% coef_cal.pca[-1]
+print(paste(c("PCA:", sum((Y2 - Y2_est.pca)^2) / sum(Y2_est.pca^2))))
+plt4 <- ggplot(data.frame(Y2, Y2_est.pca), aes(x=Y2, y=Y2_est.pca)) + geom_point() + geom_abline() + ylim(10, 25) + xlim(10, 25) + ggtitle("PCA Regression")
+
+# Optional: grid of prediction plots
+library(gridExtra)
+grid.arrange(plt1, plt2, plt3, plt4, ncol=2, nrow=2)
