@@ -34,28 +34,28 @@ Wavmat <- function(h,N,k0=log(N,2),shift=2){
   #   > data <- t(W) %*% wt # should return you to the 'dat'
   #
   #
-
-
+  
+  
   J <- log(N,2);
   g <- rev(h*(-1)^(1:length(h)));
-
+  
   if(J != floor(J)){
     stop("N has to be a power of 2.");
   }
-
+  
   h <- c(h, rep(0,N));
   g <- c(g, rep(0,N));
-
+  
   oldmat <- diag(2^(J-k0));
-
+  
   for(k in seq(k0,1,by=-1)){
-
+    
     ubJk <- 2^(J-k);
     ubJk1 <- 2^(J-k+1);
-
+    
     gmat <- matrix(data=0,nrow=ubJk1,ncol=ubJk);
     hmat <- matrix(data=0,nrow=ubJk1,ncol=ubJk);
-
+    
     for(jj in 1:ubJk){
       for(ii in 1:ubJk1){
         modulus <- (N+ii-2*jj+shift) %% ubJk1;
@@ -64,11 +64,11 @@ Wavmat <- function(h,N,k0=log(N,2),shift=2){
         gmat[ii,jj] <- g[modulus];
       }
     }
-
+    
     W <- rbind(oldmat %*% t(hmat),t(gmat));
     oldmat <- W;
   }
-
+  
   return(W)
   
   #
@@ -148,13 +148,7 @@ plt1 <- ggplot(data.frame(Y2, Y2_est.wave), aes(x=Y2, y=Y2_est.wave)) + geom_poi
 # Step 11: Check the closeness via the ratio of “energy” of the difference Y2 - Y2hat, compared to the “energy” of the prediction Y2hat.
 print(paste(c("Transformed:", sum((Y2 - Y2_est.wave)^2) / sum(Y2_est.wave^2))))
 
-# Optional: Find energies of all wavelet coefficients
-energies <- apply(D2, 2, function(x) var(x), simplify=TRUE)
-# plot energies of all coefficients, highlight the best in red
-plt.energ <- ggplot(data.frame(energies), aes(x=1:length(energies), y=energies)) + 
-  geom_point() + 
-  geom_point(aes(x=correlation_analysis_results$max_corr_where, 
-                 y=energies[correlation_analysis_results$max_corr_where]), color="red", size=5)
+
 # plot correlations
 plt.corr <- ggplot(data.frame(corrs), aes(x=1:length(corrs), y=corrs)) + 
   geom_point() + 
@@ -183,15 +177,120 @@ Y2_est.waveL = predict(model_cal.lasso, newx=D2, s="lambda.min")
 print(paste(c("LASSO:", sum((Y2 - Y2_est.waveL)^2) / sum(Y2_est.waveL^2))))
 plt3 <- ggplot(data.frame(Y2, Y2_est.waveL), aes(x=Y2, y=Y2_est.waveL)) + geom_point() + geom_abline() + ylim(10, 25) + xlim(10, 25) + ggtitle("Wavelet+LASSO Regression")
 
-# Optional: Compare wavelets with PCA. 
-pca_cal = prcomp(t(Xcal))
-pca_pre = prcomp(t(Xpre))
-model_cal.pca = lm(Y1 ~ pca_cal$x[, 1:10])
-coef_cal.pca <- model_cal.pca$coefficients
-Y2_est.pca = coef_cal.pca[1] + pca_pre$x[, 1:10] %*% coef_cal.pca[-1]
-print(paste(c("PCA:", sum((Y2 - Y2_est.pca)^2) / sum(Y2_est.pca^2))))
+# Optional: Find energies of all wavelet coefficients
+energies <- apply(D2, 2, function(x) sum(x^2), simplify=TRUE)
+# plot energies of all coefficients, highlight the best in red
+plt.energ <- ggplot(data.frame(energies), aes(x=1:length(energies), y=energies)) +
+  geom_point() + ggtitle('Wavelet coefficient energies')
+print(plt.energ)
+
+# Optional: do principal component regression on the wavelet coefficients
+pca_cal_norm = prcomp(t(Xcal), scale = TRUE, center = TRUE) 
+pca_pre_norm = prcomp(t(Xpre), scale = TRUE, center = TRUE) 
+summary(pca_cal_norm)
+n.comp = 3
+model_cal.pre = lm(Y1 ~ pca_cal_norm$x[, 1:n.comp])
+Y2_est.pca = model_cal.pre$coefficients[1] + pca_pre_norm$x[ ,1:n.comp] %*% model_cal.pre$coefficients[-1]
 plt4 <- ggplot(data.frame(Y2, Y2_est.pca), aes(x=Y2, y=Y2_est.pca)) + geom_point() + geom_abline() + ylim(10, 25) + xlim(10, 25) + ggtitle("PCA Regression")
+print(paste(c("PCA:", sum((Y2 - Y2_est.pca)^2) / sum(Y2_est.pca^2))))
 
 # Optional: grid of prediction plots
 library(gridExtra)
 grid.arrange(plt1, plt2, plt3, plt4, ncol=2, nrow=2)
+
+# generate new calibration and prediction dataset
+cvdata = function(Xcal_old, Xpre_old, Ycal_old, Ypre_old)
+{
+  # 0 : calibration
+  # 1 : prediction 
+  tempdataX = rbind(t(Xcal_old), t(Xpre_old))
+  tempdataX =cbind(tempdataX, c(rep(0, dim(Xcal_old)[2]), rep(1, dim(Xpre_old)[2])))
+  
+  tempdataY = rbind(Ycal_old, Ypre_old)
+  tempdataY =cbind(tempdataY, c(rep(0, dim(Ycal_old)[1]), rep(1, dim(Ypre_old)[1])))
+  
+  new.cal.ind = sample(1:71, 47, replace = FALSE)
+  new.pred.ind = c(1:71)
+  new.pred.ind = new.pred.ind[-new.cal.ind]
+  
+  Xcal_new = tempdataX[new.cal.ind, c(1:256)]
+  Xpre_new = tempdataX[new.pred.ind, c(1:256)]
+  
+  Ycal_new = tempdataY[new.cal.ind, c(1:4)]
+  Ypre_new = tempdataY[new.pred.ind, c(1:4)]
+  
+  return(list("Xcal" = t(Xcal_new), "Xpre" = t(Xpre_new), "Ycal" = Ycal_new, "Ypre" = Ypre_new))
+}
+
+
+# repeating 2000 times
+wave.err = NULL
+got.selected = NULL
+pcr.err = NULL
+for(i in 1:2000)
+{
+  
+  newdata = cvdata(Xcal, Xpre, Ycal, Ypre)
+  Xcal.new = newdata$Xcal
+  Xpre.new = newdata$Xpre
+  Ycal.new = newdata$Ycal
+  Ypre.new = newdata$Ypre
+  
+  # Step 4: Transform the spectra to the wavelet domain, for both calibration and prediction
+  # sets. Transpose the results to get the observations as rows and wavelet coefs as columns
+  D1= W %*% Xcal.new
+  D2 = W %*% Xpre.new
+  D1 = t(D1)
+  D2 = t(D2)
+  
+  # Step 5: Predict sugar (second column in matrix Y)
+  # First get true sugar levels from lab measurements for calibration and prediction sets
+  Y1 <- Ycal.new[, 2]
+  Y2 <- Ypre.new[, 2]
+  
+  # Step 6: Find all correlations between Y1 and the columns in D1 corresponding
+  # the wavelet coefficients.
+  corrs <- apply(D1, 2, function(x) cor(Y1, x), simplify=TRUE)
+  
+  # Step 7: Find wavelet coefficient in calibration data maximizing the correlation
+  # with Y1.
+  largest_correlation <- max(abs(corrs))
+  largest_idx <- which(abs(corrs) == largest_correlation)
+  
+  correlation_analysis_results <- list(
+    "max_corr"=largest_correlation,
+    "max_corr_where"=largest_idx
+  )
+  
+  # Step 8: Fit the regression between Y1 and the "best" wavelet coefficient from the calibration set
+  # Choose the "best" wavelet coefficient
+  best_coef = D1[, correlation_analysis_results$max_corr_where]
+  
+  # Run linear regression 
+  model_cal = lm(Y1 ~ best_coef)
+  
+  # Estimated regression coefficients for the calibration set
+  coeff_cal = model_cal$coefficients
+  
+  # Step 9: Using the regression equation from calibration set we plug the "best" wavelet coefficient 
+  # but from the prediction set and predict Y2.
+  Y2_est.wave = coeff_cal[1] + coeff_cal[2]*D2[, correlation_analysis_results$max_corr_where]
+  
+  wave.err[i] = sum((Y2 - Y2_est.wave)^2) / sum(Y2_est.wave^2)
+  got.selected[i] = correlation_analysis_results$max_corr_where
+  
+  
+  pca_cal_norm = prcomp(t(Xcal.new), scale = TRUE, center = TRUE) 
+  pca_pre_norm = prcomp(t(Xpre.new), scale = TRUE, center = TRUE) 
+  summary(pca_cal_norm)
+  n.comp = 3
+  model_cal.pre = lm(Y1 ~ pca_cal_norm$x[, 1:n.comp])
+  Y2_est = model_cal.pre$coefficients[1] + pca_pre_norm$x[ ,1:n.comp] %*% model_cal.pre$coefficients[-1]
+  pcr.err[i] = sum((Y2 - Y2_est)^2) / sum(Y2_est^2)
+  
+  
+}
+
+mean(wave.err)
+mean(pcr.err)
+table(got.selected)
